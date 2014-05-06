@@ -1,0 +1,1883 @@
+// Declare global variables
+
+import controlP5.*;
+ControlP5 cp5;
+float[] waypoint_x; 
+float[] waypoint_y;
+float spacing, spacing2, spacing3, temp, temp2, tempX, tempY;
+int index, NumWaypoints;
+int windowHeight = 720;
+int windowWidth  = 1280;
+Slider overlap;
+float overlapCm;
+boolean plotReady = false;
+boolean decompReady = false;
+boolean zoneReady = false;
+RadioButton r, r2;
+int polyType, decompType;
+String tempString;
+float scaleFactor, polyWidth, polyHeight;
+int A_x; // Bottom Left X
+int A_y; // Bottom Left Y
+int B_x; // Bottom Right X
+int B_y; // Bottom Right Y
+int C_x; // Top Right X
+int C_y; // Top Right Y
+int D_x; // Top Left X
+int D_y; // Top Left Y
+Textarea myTextarea;
+float m1, m2, b1, b2;
+float y_start, x_start;
+MPoly[] bounds = new MPoly[100];
+mowZone[] zone = new mowZone[100];
+ZoneWaypoint[] waypoint = new ZoneWaypoint[2000];
+int polyIndex = 0;
+int zoneIndex = 0;
+int waypointIndex = 0;
+boolean continueSearch = true;
+boolean vert, horiz, up, right;
+color black = color(0,0,0);
+color red = color(255,0,0);
+color gray = color(169,169,169);
+color green = color(0,255,0);
+
+void setup() {
+  size(windowWidth, windowHeight);
+  PFont font = createFont("arial", 20);
+  ellipseMode(RADIUS);
+ 
+  // Declare a new object to hold the control information
+  cp5 = new ControlP5(this);
+  
+  // Create button to generate waypoints
+  cp5.addBang("Generate")
+  .setColorForeground(color(170, 50, 50))
+    .setColorActive(color(255, 75, 75))  
+      .setPosition(325, windowHeight - 60)
+        .setSize(80, 40)
+          .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER);
+          
+  // Create button to decompose the yard
+  cp5.addBang("Decomp")
+  .setColorForeground(color(170, 50, 50))
+    .setColorActive(color(255, 75, 75))  
+      .setPosition(325, windowHeight - 110)
+        .setSize(80, 40)
+          .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER);
+  
+  // Create a button to plot the polygon on the screen
+  cp5.addBang("Add")
+    .setPosition(325, windowHeight - 160)
+      .setSize(80, 40)
+        .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER);
+        
+  // Create a button to undo last plot
+  cp5.addBang("Undo")
+    .setPosition(325, windowHeight - 210)
+      .setSize(80, 40)
+        .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER);
+        
+  // Create a button to save the plot
+  cp5.addBang("Save")
+    .setPosition(325, windowHeight - 260)
+      .setSize(80, 40)
+        .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER);
+        
+  // Create a button to load a saved plot
+  cp5.addBang("Load")
+    .setPosition(325, windowHeight - 310)
+      .setSize(80, 40)
+        .getCaptionLabel().align(ControlP5.CENTER, ControlP5.CENTER);
+        
+          
+  // Create a textbox to print out the waypoints      
+  myTextarea = cp5.addTextarea("txt")
+    .setPosition(25, 25)
+      .setSize(400, windowHeight - 400)
+        .setFont(createFont("arial", 12))
+          .setLineHeight(14)
+            .setColor(color(255))
+              .setColorBackground(20)
+                .setColorForeground(color(255, 100));
+  ;
+  myTextarea.setText("Vertices:\n");
+  
+  // Add a slider for the overlap of the mower
+  overlap = cp5.addSlider("% overlap")
+     .setPosition(35,365)
+     .setSize(150,15)
+     .setRange(0,100)
+     .setValue(50)
+     ;
+  
+  // Reposition the Label for controller 'overlap'
+  cp5.getController("% overlap").getValueLabel().align(ControlP5.LEFT, ControlP5.BOTTOM_OUTSIDE).setPaddingX(0);
+  cp5.getController("% overlap").getCaptionLabel().align(ControlP5.RIGHT, ControlP5.BOTTOM_OUTSIDE).setPaddingX(0);
+  
+  // Add label for Object Type
+  cp5.addTextlabel("label2")
+    .setText("Object Type:")
+      .setPosition(35,405)
+        .setColorValue(0xffffffff)
+          .setFont(createFont("Arial", 16));
+  
+  // Add radio button (check box where only one thing can be highlighted at a time) for objects and borders
+  r = cp5.addRadioButton("radioButton")
+       .setPosition(40,430)
+       .setSize(60,15)
+       .setColorForeground(color(120))
+       .setColorActive(color(255))
+       .setColorLabel(color(255))
+       .setItemsPerRow(1)
+       .setSpacingColumn(50)
+       .addItem("Border",1)
+       .addItem("Obstacle",2)
+       ;
+
+  // Add label for Decomp Type
+  cp5.addTextlabel("label3")
+    .setText("Decomp Type:")
+      .setPosition(170,405)
+        .setColorValue(0xffffffff)
+          .setFont(createFont("Arial", 16));
+  
+  // Add radio button (check box where only one thing can be highlighted at a time) for vertical or horizontal yard decomposition
+  r2 = cp5.addRadioButton("radioButton2")
+       .setPosition(175,430)
+       .setSize(60,15)
+       .setColorForeground(color(120))
+       .setColorActive(color(255))
+       .setColorLabel(color(255))
+       .setItemsPerRow(1)
+       .setSpacingColumn(50)
+       .addItem("Vertical",1)
+       .addItem("Horizontal",2)
+       ;  
+  
+  // Add label for Polygon Vertices
+  cp5.addTextlabel("label")
+    .setText("Polygon Vertices:")
+      .setPosition(35, 480)
+        .setColorValue(0xffffffff)
+          .setFont(createFont("Arial", 16));
+   
+  int textboxSpacing = 50; 
+   
+  // Add text boxes for Bottom Left Vertex of polygon       
+  cp5.addTextfield("Bottom Left X")    // String BottomLeftX = cp5.get(Textfield.class, "Bottom Left X").getText();    xpos = Float.valueOf(BottomLeftX) ;
+    .setPosition(35, 500)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+
+  cp5.addTextfield("Bottom Left Y")    // String BottomLeftY = cp5.get(Textfield.class, "Bottom Left Y").getText();    xpos = Float.valueOf(BottomLeftY) ;
+    .setPosition(170, 500)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+            
+  // Add text boxes for Bottom Right Vertex of polygon             
+  cp5.addTextfield("Bottom Right X")    // String BottomRightX = cp5.get(Textfield.class, "Bottom Right X").getText();    xpos = Float.valueOf(BottomRightX) ;
+    .setPosition(35, 500+textboxSpacing)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+
+  cp5.addTextfield("Bottom Right Y")    // String BottomRightY = cp5.get(Textfield.class, "Bottom Right Y").getText();    xpos = Float.valueOf(BottomRightY) ;
+    .setPosition(170, 500+textboxSpacing)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+            
+  // Add text boxes for Top Right Vertex of polygon             
+  cp5.addTextfield("Top Right X")    // String TopRightX = cp5.get(Textfield.class, "Top Right X").getText();    xpos = Float.valueOf(TopRightX) ;
+    .setPosition(35, 500+textboxSpacing*2)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+
+  cp5.addTextfield("Top Right Y")    // String TopRightY = cp5.get(Textfield.class, "Top Right Y").getText();    xpos = Float.valueOf(TopRightY) ;
+    .setPosition(170, 500+textboxSpacing*2)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+            
+  // Add text boxes for Top Left Vertex of polygon       
+  cp5.addTextfield("Top Left X")    // String TopLeftX = cp5.get(Textfield.class, "Top Left X").getText();    xpos = Float.valueOf(TopLeftX) ;
+    .setPosition(35, 500+textboxSpacing*3)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+
+  cp5.addTextfield("Top Left Y")    // String TopLeftY = cp5.get(Textfield.class, "Top Left Y").getText();    xpos = Float.valueOf(TopLeftY) ;
+    .setPosition(170, 500+textboxSpacing*3)
+      .setSize(120, 30)
+        .setFont(font)
+          .setColor(color(255, 255, 255))
+            .setAutoClear(false)
+            ;
+ 
+  //myTextarea.setText(myTextarea.getText() + String.valueOf(overlap));
+}
+
+void draw() {
+  colorMode(RGB, 255);
+  stroke(40);
+  fill(40);
+  rect(0, 0, 450, windowHeight);
+  stroke(169,169,169);
+  fill(169,169,169);
+  rect(450, 0, windowWidth, windowHeight);
+  
+  for (int i = 0; i < polyIndex; i++) {
+    strokeWeight(1);
+    switch(bounds[i].type) {
+    case 1: // Polygon is a border
+      stroke(0); // Black borders
+      fill(255); // White fill
+      break;
+    case 2: // Polygon is an obstacle
+      stroke(0); // Black borders
+      fill(255, 0, 0); // Red fill
+      break;
+    default:
+      break;
+    } 
+    pushMatrix();
+    scale(1, -1);
+    translate(0, -height);
+    beginShape();
+    vertex(bounds[i].Ax*scaleFactor + 475, bounds[i].Ay*scaleFactor + 25);
+    vertex(bounds[i].Bx*scaleFactor + 475, bounds[i].By*scaleFactor + 25);
+    vertex(bounds[i].Cx*scaleFactor + 475, bounds[i].Cy*scaleFactor + 25);
+    vertex(bounds[i].Dx*scaleFactor + 475, bounds[i].Dy*scaleFactor + 25);
+    endShape(CLOSE);
+    // Plot the vertices of the obstacles as green
+    for (int z = 0; z < polyIndex; z++) {
+      stroke(0, 255, 0); // Green
+      point(bounds[z].Ax*scaleFactor + 475, bounds[z].Ay*scaleFactor + 25);
+      point(bounds[z].Bx*scaleFactor + 475, bounds[z].By*scaleFactor + 25);
+      point(bounds[z].Cx*scaleFactor + 475, bounds[z].Cy*scaleFactor + 25);
+      point(bounds[z].Dx*scaleFactor + 475, bounds[z].Dy*scaleFactor + 25);
+    }
+    
+    popMatrix();
+  }
+  
+  
+  pushMatrix();
+  scale(1, -1);
+  translate(0, -height);
+  stroke(0, 0, 255); // Blue
+  if(decompReady){
+    int j;
+    color c;
+    // Check for vertical decomposition
+    if(decompType == 1) {
+      for(int i = 0; i < polyIndex; i++){
+        // Only decompose from obstacle vertices (type == 2)
+        if(bounds[i].type == 2){
+          for(int k = 1; k < 5; k++){
+            switch(k) {
+              case 1: // Vertex A
+                tempX = bounds[i].Ax;
+                tempY = bounds[i].Ay;
+                break;
+              case 2: // Vertex B
+                tempX = bounds[i].Bx;
+                tempY = bounds[i].By;
+                break;
+              case 3: // Vertex C
+                tempX = bounds[i].Cx;
+                tempY = bounds[i].Cy;
+                break;
+              case 4: // Vertex D
+                tempX = bounds[i].Dx;
+                tempY = bounds[i].Dy;
+                break;
+              default:
+                break;
+            } 
+            // Search up from the vertex
+            j = 1;
+            continueSearch = true;
+            while (continueSearch == true) {
+              c = get(Math.round(tempX*scaleFactor) + 475, windowHeight - (Math.round(tempY*scaleFactor) + 25 + j));
+              if(c==red || c==black || c==gray){ // Check if the color of the pixel is black or red
+                continueSearch = false;
+              }
+              if(j>5 && isGreen(c) && isGreen(get(Math.round(tempX*scaleFactor) + 475, windowHeight - (Math.round(tempY*scaleFactor) + 25 + j + 1)))==false){
+                continueSearch = false;
+              }
+              j++;
+            }
+            j = j - 1;
+            if(j>56*scaleFactor){
+              line(tempX*scaleFactor + 475, tempY*scaleFactor + 25, tempX*scaleFactor + 475, tempY*scaleFactor + 25 + j);
+              stroke(0, 255, 0); // Green
+              point(tempX*scaleFactor + 475, tempY*scaleFactor + 25);
+              point(tempX*scaleFactor + 475, tempY*scaleFactor + 25 + j);
+              stroke(0, 0, 255); // Blue
+              temp = tempY + j/scaleFactor;
+              
+              if(k == 1){
+                for (j = 0; j < 1000*scaleFactor + 1; j++){
+                  c = get(Math.round(tempX*scaleFactor) + 475, windowHeight - (25 + j));
+                }
+              }
+            
+            }
+            continueSearch = true;
+            
+            // Search down from the vertex
+            j = 1;
+            while (continueSearch == true) {
+              c = get(Math.round(tempX*scaleFactor) + 475, windowHeight - (Math.round(tempY*scaleFactor) + 25 - j));
+              if(c==red || c==black || c==gray){ // Check if the color of the pixel is black or red
+                continueSearch = false;
+              }
+              if(j>5 && isGreen(c) && isGreen(get(Math.round(tempX*scaleFactor) + 475, windowHeight - (Math.round(tempY*scaleFactor) + 25 - j - 1)))==false){
+                continueSearch = false;
+              }
+              j++;
+            }
+            j = j - 1;
+            if(j>56*scaleFactor){
+              line(tempX*scaleFactor + 475, tempY*scaleFactor + 25, tempX*scaleFactor + 475, tempY*scaleFactor + 25 - j);
+              stroke(0, 255, 0); // Green
+              point(tempX*scaleFactor + 475, tempY*scaleFactor + 25);
+              point(tempX*scaleFactor + 475, tempY*scaleFactor + 25 - j);
+              stroke(0, 0, 255); // Blue
+              temp = tempY - j/scaleFactor;
+            }
+            continueSearch = true;
+          }
+        }
+        // Plot the vertices of the yard as green (yard bounds type == 1)
+        else{
+          stroke(0, 255, 0); // Green
+          point(bounds[i].Ax*scaleFactor + 475, bounds[i].Ay*scaleFactor + 25);
+          point(bounds[i].Bx*scaleFactor + 475, bounds[i].By*scaleFactor + 25);
+          point(bounds[i].Cx*scaleFactor + 475, bounds[i].Cy*scaleFactor + 25);
+          point(bounds[i].Dx*scaleFactor + 475, bounds[i].Dy*scaleFactor + 25);
+          stroke(0, 0, 255); // Blue
+        }
+      }
+    }
+    // Else a horizontal decomposition
+    else {
+      for(int i = 0; i < polyIndex; i++){
+        // Only decompose from obstacle vertices (type == 2)
+        if(bounds[i].type == 2){
+          for(int k = 1; k < 5; k++){
+            switch(k) {
+              case 1: // Vertex A
+                tempX = bounds[i].Ax;
+                tempY = bounds[i].Ay;
+                break;
+              case 2: // Vertex B
+                tempX = bounds[i].Bx;
+                tempY = bounds[i].By;
+                break;
+              case 3: // Vertex C
+                tempX = bounds[i].Cx;
+                tempY = bounds[i].Cy;
+                break;
+              case 4: // Vertex D
+                tempX = bounds[i].Dx;
+                tempY = bounds[i].Dy;
+                break;
+              default:
+                break;
+            } 
+            // Search right from the vertex
+            j = 1;
+            continueSearch = true;
+            while (continueSearch == true) {
+              c = get(Math.round(tempX*scaleFactor) + 475 + j, windowHeight - (Math.round(tempY*scaleFactor) + 25));
+              if(c==red || c==black || c==gray){ // Check if the color of the pixel is black or red
+                continueSearch = false;
+              }
+              if(j>5 && isGreen(c) && isGreen(get(Math.round(tempX*scaleFactor) + 475 + j + 1, windowHeight - (Math.round(tempY*scaleFactor) + 25)))==false){
+                continueSearch = false;
+              }
+              j++;
+            }
+            j = j - 1;
+            if(j>56*scaleFactor){
+              line(tempX*scaleFactor + 475 + j, tempY*scaleFactor + 25, tempX*scaleFactor + 475, tempY*scaleFactor + 25);
+              stroke(0, 255, 0); // Green
+              point(tempX*scaleFactor + 475 + j, tempY*scaleFactor + 25);
+              point(tempX*scaleFactor + 475    , tempY*scaleFactor + 25);
+              stroke(0, 0, 255); // Blue
+              temp = tempX + j/scaleFactor;
+            }
+            continueSearch = true;
+            
+            // Search left from the vertex
+            j = 1;
+            while (continueSearch == true) {
+              c = get(Math.round(tempX*scaleFactor) + 475 - j, windowHeight - (Math.round(tempY*scaleFactor) + 25));
+              if(c==red || c==black || c==gray){ // Check if the color of the pixel is black or red
+                continueSearch = false;
+              }
+              if(j>5 && isGreen(c) && isGreen(get(Math.round(tempX*scaleFactor) + 475 - j - 1, windowHeight - (Math.round(tempY*scaleFactor) + 25)))==false){
+                continueSearch = false;
+              }
+              j++;
+            }
+            j = j - 1;
+            if(j>56*scaleFactor){
+              line(tempX*scaleFactor + 475 - j, tempY*scaleFactor + 25, tempX*scaleFactor + 475, tempY*scaleFactor + 25);
+              stroke(0, 255, 0); // Green
+              point(tempX*scaleFactor + 475 - j, tempY*scaleFactor + 25);
+              point(tempX*scaleFactor + 475    , tempY*scaleFactor + 25);
+              stroke(0, 0, 255); // Blue
+              temp = tempY - j/scaleFactor;
+            }
+            continueSearch = true;
+          }
+        }
+        // Plot the vertices of the yard as green (yard bounds type == 1)
+        else{
+            stroke(0, 255, 0); // Green
+            point(bounds[i].Ax*scaleFactor + 475, bounds[i].Ay*scaleFactor + 25);
+            point(bounds[i].Bx*scaleFactor + 475, bounds[i].By*scaleFactor + 25);
+            point(bounds[i].Cx*scaleFactor + 475, bounds[i].Cy*scaleFactor + 25);
+            point(bounds[i].Dx*scaleFactor + 475, bounds[i].Dy*scaleFactor + 25);
+            stroke(0, 0, 255); // Blue
+        }
+      }  
+    }  
+    
+    /*
+    // TEMPORARY CODE to find green vertices
+    if(plotReady == false) {
+      tempX = 1020;
+      tempY = 3500;
+      int R, G, B;
+      for(j = 2900; j < 3600; j++){
+        c = get(Math.round(tempX*scaleFactor) + 475, windowHeight - (Math.round(j*scaleFactor) + 25));
+        println(j + " C: " + hex(c));
+        if(isGreen(c)){
+          //println("Vertex at: " + j + "  " + hex(c)); 
+        }
+      }
+      plotReady = true; 
+    }  */
+    
+    zoneReady = true;
+  }
+  popMatrix();
+  
+  fill(169,169,169);
+  if(plotReady) {
+    for (int i = 0; i < waypointIndex; i++) {
+      // Plot the waypoints on the graphic display
+      pushMatrix();
+      scale(1, -1);
+      translate(0, -height);
+      stroke(0);
+      //point(waypoint_x[i]*scaleFactor + 475, waypoint_y[i]*scaleFactor + 25);
+      // Plot the waypoints with a 10 cm radius (accuracy of RTK GPS)
+      ellipse(waypoint[i].x*scaleFactor + 475, waypoint[i].y*scaleFactor + 25, 10*scaleFactor, 10*scaleFactor);
+      popMatrix();
+    }
+    for (int i = 0; i < waypointIndex - 1; i++) {
+      // Figure out which direction the lines are going in order to add arrows
+        // Check for vertical
+        if(waypoint[i+1].x==waypoint[i].x)
+          vert = true;
+        else
+          vert = false;
+          
+          // Check for up or down
+          if(waypoint[i+1].y>waypoint[i].y)
+            up = true;
+          else
+            up = false;
+            
+        // Check for horizontal
+        if(waypoint[i+1].y==waypoint[i].y)
+          horiz = true;
+        else
+          horiz = false;
+          
+          // Check for right or left
+            if(waypoint[i+1].x>waypoint[i].x)
+              right = true;
+            else
+              right = false;
+              
+      // Plot the waypoints on the graphic display
+      temp = (waypoint[i+1].x - waypoint[i].x)/2 + waypoint[i].x;
+      temp2 = (waypoint[i+1].y - waypoint[i].y)/2 + waypoint[i].y;
+      strokeWeight(1);
+      pushMatrix();
+      scale(1, -1);
+      translate(0, -height);
+      stroke(0);
+      line(waypoint[i].x*scaleFactor + 475, waypoint[i].y*scaleFactor + 25, waypoint[i+1].x*scaleFactor + 475, waypoint[i+1].y*scaleFactor + 25);
+      // Plot arrows to show direction of path
+      if(vert){
+        if(up){ // Plot an up arrow in the middle of the vertical waypoints
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp-10)*scaleFactor + 475, (temp2-10)*scaleFactor + 25);
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp+10)*scaleFactor + 475, (temp2-10)*scaleFactor + 25);
+        }
+        else{ // Plot a down arrow in the middle of the vertical waypoints
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp-10)*scaleFactor + 475, (temp2+10)*scaleFactor + 25);
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp+10)*scaleFactor + 475, (temp2+10)*scaleFactor + 25);
+        }
+      }
+      if(horiz){
+        if(right){ // Plot a right arrow in the middle of the horizontal waypoints
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp-10)*scaleFactor + 475, (temp2+10)*scaleFactor + 25);
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp-10)*scaleFactor + 475, (temp2-10)*scaleFactor + 25);  
+        }
+        else { // Plot a left arrow in the middle of the horizontal waypoints
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp+10)*scaleFactor + 475, (temp2+10)*scaleFactor + 25);
+          line(temp*scaleFactor + 475, temp2*scaleFactor + 25, (temp+10)*scaleFactor + 475, (temp2-10)*scaleFactor + 25);  
+        } 
+      }
+      popMatrix();
+    }
+  }
+}
+
+void mousePressed() {
+  int j = 0;
+  int k = 0;
+  color c = color(169,169,169);
+  int Ax = -1;
+  int Ay = -1;
+  int Bx = -1;
+  int By = -1;
+  int Cx = -1;
+  int Cy = -1;
+  int Dx = -1;
+  int Dy = -1;
+  boolean border1 = true;
+  boolean border2 = true;
+  int clickedX = mouseX;
+  int clickedY = mouseY;
+  
+  if(mouseX < 475)
+    zoneReady = false;
+  
+  
+  // Function to check mouse click location (use mouseX and mouseY)
+  // When the mouse is clicked in a zone after the decompostion is done, it will calculate the zone vertices and index accordingly
+  if(zoneReady){
+    // Depending on decompostion type, either search up and down OR left and right until a border is reached
+    
+    // Print the zone index at the mouse location
+    // Add label for Object Type
+    cp5.addTextlabel("zone" + Integer.toString(zoneIndex+1))
+      .setText(Integer.toString(zoneIndex+1))
+        .setPosition(clickedX, clickedY)
+          .setColorValue(0x00000000)
+            .setFont(createFont("Arial", 16)); 
+          
+    // Check for vertical decomposition (search left and right from mouse location)
+        j = 0;
+        k = 0;
+        
+        // Search left until a border is reached
+        continueSearch = true;
+        while (continueSearch == true) {
+          c = get(clickedX - j, clickedY);
+          
+          // Check if the color of the pixel is black or red
+          if(isBlue(c) || isBlack(c)){ 
+            continueSearch = false;
+            // If the border is blue, set the border1 variable to false (soft border)
+            if(isBlue(c)){
+              border1 = false;
+            }
+            // Else the border is black, set the border1 variable to true (hard border)
+            else {
+              border1 = true;
+            }
+            // Set the x coordinates of vertex A and D
+            Ax = Math.round((clickedX - j - 475)/scaleFactor);
+            Dx = Math.round((clickedX - j - 475)/scaleFactor);
+          }
+          j++;
+        }
+        j = j - 1;
+        
+          // Search up the left border for the y coordinate of D vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX - j, clickedY - k);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel to the right of a vertex on a left border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if(isWhite(get(clickedX - j + 2, clickedY - k)) && isBlue(get(clickedX - j, clickedY - k - 5))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the y coordinate of vertex D
+                Dy = Math.round((windowHeight - clickedY + k - 25)/scaleFactor); // NOTE it is +k and not -k because of the vertical flip when plotting
+              }
+            }
+            k++;
+          }
+          
+          // Search down the left border for the y coordinate of A vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX - j, clickedY + k);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel to the right of a vertex on a left border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if((isWhite(get(clickedX - j + 2, clickedY + k)) && isBlue(get(clickedX - j, clickedY + k + 5))) || isGreen(get(clickedX - j, clickedY + k + 1))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the y coordinate of vertex A
+                Ay = Math.round((windowHeight - clickedY - k - 25)/scaleFactor); // NOTE it is -k and not +k because of the vertical flip when plotting
+              }
+            }
+            k++;
+          }
+         
+         
+        // Search right until a border is reached
+        j = 0;
+        continueSearch = true;
+        while (continueSearch == true) {
+          c = get(clickedX + j, clickedY);
+          
+          // Check if the color of the pixel is black or red
+          if(isBlue(c) || isBlack(c)){ 
+            continueSearch = false;
+            // If the border is blue, set the border1 variable to false (soft border)
+            if(isBlue(c)){
+              border2 = false;
+            }
+            // Else the border is black, set the border1 variable to true (hard border)
+            else {
+              border2 = true;
+            }
+            // Set the x coordinates of vertex A and D
+            Bx = Math.round((clickedX + j - 475)/scaleFactor);
+            Cx = Math.round((clickedX + j - 475)/scaleFactor);
+          }
+          j++;
+        }
+        j = j - 1;
+        
+          // Search up the right border for the y coordinate of C vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX + j, clickedY - k);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel to the left of a vertex on a right border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if(isWhite(get(clickedX + j - 2, clickedY - k)) && isBlue(get(clickedX + j, clickedY - k - 5))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the y coordinate of vertex C
+                Cy = Math.round((windowHeight - clickedY + k - 25)/scaleFactor); // NOTE it is +k and not -k because of the vertical flip when plotting
+              }
+            }
+            k++;
+          }
+          
+          // Search down the right border for the y coordinate of B vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX + j, clickedY + k);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel to the left of a vertex on a right border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if((isWhite(get(clickedX + j - 2, clickedY + k)) && isBlue(get(clickedX + j, clickedY + k + 5))) || isGreen(get(clickedX + j, clickedY + k + 1))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the y coordinate of vertex B
+                By = Math.round((windowHeight - clickedY - k - 25)/scaleFactor); // NOTE it is -k and not +k because of the vertical flip when plotting
+              }
+            }
+            k++;
+          }
+          
+         
+         //println(zoneIndex + " Bx: " +  Integer.toString(Bx) + " By: " + Integer.toString(By) + " j: " + j + " c: " + hex(c));
+         //println("500,200: " + hex(get(Math.round(500*scaleFactor) + 475, windowHeight - (Math.round(200*scaleFactor) + 25))));
+         //println(Integer.toString(clickedY + k) + " " + Integer.toString(Math.round((windowHeight - clickedY - k - 25)/scaleFactor)) + " " + hex(c));
+      }  
+    }
+    
+    
+    
+    // Else, horizontal decomposition (search up and down from mouse location)
+    else {
+        j = 0;
+        k = 0;
+        
+        // Search down until a border is reached
+        continueSearch = true;
+        while (continueSearch == true) {
+          c = get(clickedX, clickedY + j);
+          
+          // Check if the color of the pixel is black or red
+          if(isBlue(c) || isBlack(c)){ 
+            continueSearch = false;
+            // If the border is blue, set the border1 variable to false (soft border)
+            if(isBlue(c)){
+              border1 = false;
+            }
+            // Else the border is black, set the border1 variable to true (hard border)
+            else {
+              border1 = true;
+            }
+            // Set the x coordinates of vertex A and B
+            Ay = Math.round((windowHeight - clickedY - j - 25)/scaleFactor);
+            By = Math.round((windowHeight - clickedY - j - 25)/scaleFactor);
+          }
+          j++;
+        }
+        j = j - 1;
+        
+          // Search left on the bottom border for the x coordinate of A vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX - k, clickedY + j);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel above a vertex on a bottom border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if(isWhite(get(clickedX - k, clickedY + j - 2)) && isBlue(get(clickedX - k - 5, clickedY + j))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the x coordinate of vertex A
+                Ax = Math.round((clickedX - k - 475)/scaleFactor); 
+              }
+            }
+            k++;
+          }
+          
+          // Search right on the bottom border for the x coordinate of B vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX + k, clickedY + j);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel above a vertex on a bottom border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if(isWhite(get(clickedX + k, clickedY + j - 2)) && isBlue(get(clickedX + k + 5, clickedY + j))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the x coordinate of vertex B
+                Bx = Math.round((clickedX + k - 475)/scaleFactor); 
+              }
+            }
+            k++;
+          }
+    
+        j = 0;
+        k = 0;
+        
+        // Search up until a border is reached
+        continueSearch = true;
+        while (continueSearch == true) {
+          c = get(clickedX, clickedY - j);
+          
+          // Check if the color of the pixel is black or red
+          if(isBlue(c) || isBlack(c)){ 
+            continueSearch = false;
+            // If the border is blue, set the border1 variable to false (soft border)
+            if(isBlue(c)){
+              border2 = false;
+            }
+            // Else the border is black, set the border1 variable to true (hard border)
+            else {
+              border2 = true;
+            }
+            // Set the x coordinates of vertex C and D
+            Cy = Math.round((windowHeight - clickedY + j - 25)/scaleFactor);
+            Dy = Math.round((windowHeight - clickedY + j - 25)/scaleFactor);
+          }
+          j++;
+        }
+        j = j - 1;
+        
+          // Search left on the top border for the x coordinate of D vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX - k, clickedY - j);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel below a vertex on a top border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if(isWhite(get(clickedX - k, clickedY + j + 2)) && isBlue(get(clickedX - k - 5, clickedY + j))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the x coordinate of vertex D
+                Dx = Math.round((clickedX - k - 475)/scaleFactor); 
+              }
+            }
+            k++;
+          }
+          
+          // Search right on the top border for the x coordinate of C vertex
+          continueSearch = true;
+          k = 0;
+          while (continueSearch == true){
+            c = get(clickedX + k, clickedY - j);
+            // Check if the pixel is green
+            if(isGreen(c)){
+              // If the pixel below a vertex on a bottom border is white and there is more blue past that vertex, it is not a vertex for that zone
+              if((isWhite(get(clickedX + k, clickedY + j + 2)) && isBlue(get(clickedX + k + 5, clickedY + j))) || isGreen(get(clickedX + k + 1, clickedY + j))){ 
+                continueSearch = true;
+              }
+              // Else a vertex is found
+              else{
+                continueSearch = false;
+                // Set the x coordinate of vertex C
+                Cx = Math.round((clickedX + k - 475)/scaleFactor); 
+              }
+            }
+            k++;
+          }    
+      }    
+    }
+    
+    zone[zoneIndex] = new mowZone(border1, border2, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy);
+    zoneIndex++;
+    if(decompType == 1)
+      myTextarea.setText(myTextarea.getText() + "  Zone " + zoneIndex + ":\n    Vertex A(" + Ax + ", " + Ay + ")\n    Vertex B(" + Bx + ", " + By + ")\n    Vertex C(" + Cx + ", " + Cy + ")\n    Vertex D(" + Dx + ", " + Dy + ")\n");
+    else
+      myTextarea.setText(myTextarea.getText() + "  Zone " + zoneIndex + ":\n    Vertex A(" + Ax + ", " + Ay + ")\n    Vertex B(" + Bx + ", " + By + ")\n    Vertex C(" + Cx + ", " + Cy + ")\n    Vertex D(" + Dx + ", " + Dy + ")\n");
+  }
+}
+
+void Save() {
+  // For each Bubble make one String to be saved
+  String[] data = new String[polyIndex+1];
+  data[0] = String.valueOf(scaleFactor);
+  for (int i = 1; i < polyIndex+1; i++ ) {
+    // Concatenate the variables
+    data[i] = bounds[i-1].type + " , " + bounds[i-1].Ax  + " , " + bounds[i-1].Ay  + " , " + bounds[i-1].Bx  + " , " + bounds[i-1].By + " , " + bounds[i-1].Cx  + " , " + bounds[i-1].Cy + " , " + bounds[i-1].Dx  + " , " + bounds[i-1].Dy;
+  }
+  // Save to File
+  // The same file is overwritten by adding the data folder path to saveStrings().
+  saveStrings("data/data.txt", data);
+}
+
+void Load(){
+ // Load text file as an array of Strings
+  String[] data = loadStrings("data.txt");
+  // The size of the array is determined by the total number of lines in the text file.
+  polyIndex = 0;
+  scaleFactor = float(data[0]);
+  for (int i = 1; i < data.length ; i++ ) {
+    polyIndex++;
+    // Each line is split into an array of floating point numbers.
+    String[] tempString = data[i].split(" , "); 
+    // The values in the array are passed into the Bubble class constructor.
+    bounds[i-1]  = new MPoly(Integer.parseInt(tempString[0]), Integer.parseInt(tempString[1]), Integer.parseInt(tempString[2]), Integer.parseInt(tempString[3]), Integer.parseInt(tempString[4]), Integer.parseInt(tempString[5]), Integer.parseInt(tempString[6]), Integer.parseInt(tempString[7]), Integer.parseInt(tempString[8]));
+  } 
+}
+
+void controlEvent(ControlEvent theEvent) {
+  if (theEvent.isFrom(r)) {
+    // Check if the polygon is a border
+    if (int(theEvent.getGroup().getArrayValue()[0])==1) {
+      polyType = 1; // polyType = "border"
+    }
+    // Check if the polygon is an obstacle
+    if (int(theEvent.getGroup().getArrayValue()[1])==1) {
+      polyType = 2; // polyType = "obstacle";
+    }
+    return;
+  }
+  
+  if (theEvent.isFrom(r2)) {
+    // Check if the decomp is vertical
+    if (int(theEvent.getGroup().getArrayValue()[0])==1) {
+      decompType = 1; 
+    }
+    // Check if the decomp is horizontal
+    if (int(theEvent.getGroup().getArrayValue()[1])==1) {
+      decompType = 2; 
+    }
+    return;
+  }
+  
+  // If the Add button is pressed, save then clear the textbox inputs
+  if (theEvent.getName().equals("Add")) {
+    // Save the vertices
+    // A = bottom left
+    // B = bototm right
+    // C = top right
+    // D = top left
+    A_x = Integer.parseInt(cp5.get(Textfield.class,"Bottom Left X").getText());
+    A_y = Integer.parseInt(cp5.get(Textfield.class,"Bottom Left Y").getText());
+    B_x = Integer.parseInt(cp5.get(Textfield.class,"Bottom Right X").getText());
+    B_y = Integer.parseInt(cp5.get(Textfield.class,"Bottom Right Y").getText());
+    C_x = Integer.parseInt(cp5.get(Textfield.class,"Top Right X").getText());
+    C_y = Integer.parseInt(cp5.get(Textfield.class,"Top Right Y").getText());
+    D_x = Integer.parseInt(cp5.get(Textfield.class,"Top Left X").getText());
+    D_y = Integer.parseInt(cp5.get(Textfield.class,"Top Left Y").getText());
+    // Clear the textboxes
+    cp5.get(Textfield.class, "Bottom Left X").clear();
+    cp5.get(Textfield.class, "Bottom Left Y").clear();
+    cp5.get(Textfield.class, "Bottom Right X").clear();
+    cp5.get(Textfield.class, "Bottom Right Y").clear();
+    cp5.get(Textfield.class, "Top Left X").clear();
+    cp5.get(Textfield.class, "Top Left Y").clear();
+    cp5.get(Textfield.class, "Top Right X").clear();
+    cp5.get(Textfield.class, "Top Right Y").clear();
+    
+    // If the polygon added is a border then scale the window accordingly
+    if(polyType == 1) { 
+      // Sort the x values and y values seperately to find scale factor
+      int[] xValues = new int[4];
+      xValues[0] = A_x;
+      xValues[1] = B_x;
+      xValues[2] = C_x;
+      xValues[3] = D_x;
+      xValues = sort(xValues);
+      
+      int[] yValues = new int[4];
+      yValues[0] = A_y;
+      yValues[1] = B_y;
+      yValues[2] = C_y;
+      yValues[3] = D_y;
+      yValues = sort(yValues);
+      
+      // Figure out the scale factor
+        // Find the biggest difference in X values and the biggest difference in y values
+        // then calculate which one is bigger
+          // then scale them to 670 pixels (the height of the window - borders)
+     polyWidth = xValues[3] - xValues[0];
+     polyHeight = yValues[3] - yValues[0];
+     if (polyWidth > polyHeight) {
+       scaleFactor = 670/polyWidth;
+     }
+     else {
+       scaleFactor = 670/polyHeight;
+     }
+   }
+   // Add the new polygon to the data array
+   bounds[polyIndex] = new MPoly(polyType, A_x, A_y, B_x, B_y, C_x, C_y, D_x, D_y);
+   polyIndex = polyIndex + 1;
+ }
+  
+  if (theEvent.getController().getName().equals("Undo")) {
+    if (polyIndex > 0)  
+      polyIndex = polyIndex - 1;
+  }
+  
+  // Check if the Generate button has been pushed
+  if (theEvent.getName().equals("Generate")) {
+    int numWaypoints = 0;
+    zoneReady = false;
+    for(int i = 0; i < zoneIndex; i++) {
+      // Find the number of waypoints in the zone
+      numWaypoints = CalcNumWaypoints(i);
+      // Set the waypoints in the zone
+      SetWaypoints(numWaypoints, i);
+      // Save vertex info to file
+      String mowInfo = myTextarea.getText();
+      String[] vertexList = splitTokens(mowInfo, "\n");
+      saveStrings("data/mow_info.txt", vertexList); 
+    }
+    // Display waypoints
+    plotReady = true;
+  }
+  
+  
+  
+  // Check if the Decomp button has been pushed
+  if (theEvent.getName().equals("Decomp")) {
+    decompReady = true;
+  }
+}
+
+
+public class mowZone
+{
+
+  public boolean border1; // states whether the bottom or left border is hard or soft (hard = true; soft = false)
+  public boolean border2; // states whether the top or right border is hard or soft (hard = true; soft = false)
+  public int Ax; // zone bottom left vertex xposition 
+  public int Ay; // zone bottom left vertex yposition 
+  public int Bx; // zone bottom right vertex xposition 
+  public int By; // zone bottom right vertex yposition  
+  public int Cx; // zone top right vertex xposition 
+  public int Cy; // zone top right vertex yposition  
+  public int Dx; // zone top left vertex xposition 
+  public int Dy; // zone top left vertex yposition   
+
+  mowZone(boolean border_1, boolean border_2, int Ax_1, int Ay_1, int Bx_2, int By_2, int Cx_3, int Cy_3, int Dx_4, int Dy_4) {
+    border1 = border_1; // states whether the bottom or left border is hard or soft (hard = true; soft = false)
+    border2 = border_2; // states whether the top or right border is hard or soft (hard = true; soft = false)
+    Ax = Ax_1; // zone bottom left vertex xposition 
+    Ay = Ay_1; // zone bottom left vertex yposition 
+    Bx = Bx_2; // zone bottom right vertex xposition 
+    By = By_2; // zone bottom right vertex yposition  
+    Cx = Cx_3; // zone top right vertex xposition 
+    Cy = Cy_3; // zone top right vertex yposition  
+    Dx = Dx_4; // zone top left vertex xposition 
+    Dy = Dy_4; // zone top left vertex yposition 
+  }
+}
+
+
+public class MPoly
+{
+
+  public int type;
+  public int Ax; // poly bottom left vertex xposition 
+  public int Ay; // poly bottom left vertex yposition 
+  public int Bx; // poly bottom right vertex xposition 
+  public int By; // poly bottom right vertex yposition  
+  public int Cx; // poly top right vertex xposition 
+  public int Cy; // poly top right vertex yposition  
+  public int Dx; // poly top left vertex xposition 
+  public int Dy; // poly top left vertex yposition    
+
+  MPoly(int itype, int Ax_1, int Ay_1, int Bx_2, int By_2, int Cx_3, int Cy_3, int Dx_4, int Dy_4) {
+    type = itype;
+    Ax = Ax_1; // poly bottom left vertex xposition 
+    Ay = Ay_1; // poly bottom left vertex yposition 
+    Bx = Bx_2; // poly bottom right vertex xposition 
+    By = By_2; // poly bottom right vertex yposition  
+    Cx = Cx_3; // poly top right vertex xposition 
+    Cy = Cy_3; // poly top right vertex yposition  
+    Dx = Dx_4; // poly top left vertex xposition 
+    Dy = Dy_4; // poly top left vertex yposition 
+  }
+}
+
+public class ZoneWaypoint
+{
+  
+  public int zone;  // zone waypoint belongs to
+  public float x; // x location of waypoint
+  public float y; // y location of waypoint
+  
+  ZoneWaypoint(int zoneIndex, float x_loc, float y_loc) {
+    zone = zoneIndex;
+    x = x_loc;
+    y = y_loc;
+  }
+}
+
+public int CalcNumWaypoints(int zoneNum) {
+  // Calculate maximum number of waypoints in trapezoid
+  // Note: 11 inches = 50% blade diameter = 28 cm (pixels are in cm before scaling)
+  //       This is the standard distance the mower will keep awap from hard edges
+  
+  // Calculate the spacing between adjacent waypoints
+  // Change the overlap from percentage to inches (the blade is 22 inches in diameter)
+    overlapCm = overlap.getValue()/100 * 22;
+   // myTextarea.setText("Overlap is set to " + overlapCm + " inches. Which is ");
+    // Convert inches to cm
+    overlapCm = overlapCm * 2.54;
+    if(zoneNum == 0)
+      myTextarea.setText("Overlap is set to " + overlapCm + " cm.\n");
+    spacing = (22*2.54) - overlapCm; // 22 inches converted to cm, then subtract the overlap
+  
+  // For now, assume all borders are hard borders
+  boolean border1 = true;
+  boolean border2 = true;
+  //boolean border1 = zone[zoneNum].border1;
+  //boolean border2 = zone[zoneNum].border2;
+  
+  // horizontal decomposition
+  if(decompType == 2) {
+    float trapHeight = zone[zoneNum].Dy - zone[zoneNum].Ay;
+    // Check if bottom border is hard
+    if(border1) {
+      y_start = 28; // Start distance from hard bottom border
+    }
+    else { // Else bottom border is soft (we would have to know the last path of the adjacent trapezoid (SAVE FOR LATER)
+       y_start = 28; // THIS SHOULD BE CHANGED LATER
+    }
+    index = 0;
+    temp = y_start;
+    // Check if top border is a soft border
+    if(border2 == false) {
+      // While the y height is less than or equal the height of the trapezoid, keep indexing
+      while (temp <= trapHeight) { 
+        temp = temp + spacing;
+        index++;
+      }
+      NumWaypoints = index * 2;
+    }
+    else { // The top border is a hard border
+      while (temp < trapHeight-28) { 
+        temp = temp + spacing;
+        index++;
+      }
+      index++; // For the last waypoints on the border of the lawn
+      NumWaypoints = index * 2;
+    }
+  }
+  
+  else { // vertical decomposition
+    float trapWidth = zone[zoneNum].Bx - zone[zoneNum].Ax;
+    // Check if left border is hard
+    if(border1) {
+      x_start = 28; // Start distance from hard left border
+    }
+    else { // Else left border is soft (we would have to know the last path of the adjacent trapezoid (SAVE FOR LATER)
+       x_start = 28;
+    }
+    index = 0;
+    temp = x_start;
+    // Check if right border is a soft border
+    if(border2 == false) {
+      // While the x width is less than or equal the width of the trapezoid, keep indexing
+      while (temp <= trapWidth) { 
+        temp = temp + spacing;
+        index++;
+      }
+      NumWaypoints = index * 2;
+    }
+    else { // The right border is a hard border
+      while (temp < trapWidth-28) { 
+        temp = temp + spacing;
+        index++;
+      }
+      index++; // For the last waypoints on the border of the lawn
+      NumWaypoints = index * 2;
+    }
+  }
+  return NumWaypoints;
+}
+
+
+
+void SetWaypoints(int numberWaypoints, int zoneNum) {
+  waypoint_x = new float[numberWaypoints + 1]; 
+  waypoint_y = new float[numberWaypoints + 1];
+  
+  float trapWidth = zone[zoneNum].Bx - zone[zoneNum].Ax;
+  float trapHeight = zone[zoneNum].Dy - zone[zoneNum].Ay;
+  
+  y_start = 28 + zone[zoneNum].Ay;
+  x_start = 28 + zone[zoneNum].Ax;
+  
+  // For now, assume all borders are hard borders
+  boolean border1 = true;
+  boolean border2 = true;
+  //boolean border1 = zone[zoneNum].border1;
+  //boolean border2 = zone[zoneNum].border2;
+  
+  // Check for horizontal decomposition
+  if(decompType == 2) {
+    // Define equations for the left and right borders
+    // Spacing = vertical spacing between parallel paths
+      if (zone[zoneNum].Dx!=zone[zoneNum].Ax){
+        // Let y = m1*x + b1 be the equation of the left border
+        m1 = (zone[zoneNum].Dy - zone[zoneNum].Ay)*1.0/(zone[zoneNum].Dx - zone[zoneNum].Ax);
+        b1 = m1*(0 - zone[zoneNum].Ax) + zone[zoneNum].Ay;
+        // Spacing2 = horizontal spacing between adjacent waypoints on the left border
+        spacing2 = (y_start + spacing - b1)/m1 - (y_start - b1)/m1;
+        waypoint_x[0] = (y_start - b1)/m1 + 28;
+      }
+      else{
+        // The line is vertical and an equation cannot be defined
+        m1 = 100000;
+        b1 = m1*(0 - zone[zoneNum].Ax) + zone[zoneNum].Ay;
+        spacing2 = 0;
+        waypoint_x[0] = zone[zoneNum].Ax + 28;
+      }
+      
+      if (zone[zoneNum].Cx!=zone[zoneNum].Bx){
+        // Let y = m2*x + b2 be the equation of the right border
+        m2 = (zone[zoneNum].Cy - zone[zoneNum].By)*1.0/(zone[zoneNum].Cx - zone[zoneNum].Bx);
+        b2 = m2*(0 - zone[zoneNum].Bx) + zone[zoneNum].By;
+        // Spacing3 = horizontal spacing between adjacent waypoints on the right border
+        spacing3 = (y_start + spacing - b2)/m2 - (y_start - b2)/m2;
+        waypoint_x[1] = (y_start - b2)/m2 - 28;
+      }
+      else{
+        // The line is vertical and an equation cannot be defined
+        m2 = 100000;
+        b2 = m2*(0 - zone[zoneNum].Bx) + zone[zoneNum].By;
+        spacing3 = 0;
+        waypoint_x[1] = zone[zoneNum].Bx - 28;
+      }  
+    
+    // Temp = current x coordinate along left border
+    // Temp2 = current x coordinate along right border
+    temp = waypoint_x[0];
+    temp2 = waypoint_x[1];
+    
+    // The second (index = 1) and third (index = 2) waypoint_x will be 11 inches (28 cm) to the left of the trapezoids x boundary
+    // The fourth (index = 3) and fifth (index = 4) waypoint_x will be 11 inches (28 cm) to the right of the trapezoids x boundary
+    // Reset index (index = 0) and repeat until the last waypoint is reached
+    index = 2; // Start index at 2 to skip the 2nd waypoint (waypoint_x[1] already established)
+    for (int i = 2; i < numberWaypoints; i++) {
+      if (index == 1) {
+        waypoint_x[i] = temp2 + spacing3;
+        temp2 = waypoint_x[i];
+      } 
+      else if (index == 2) {
+        waypoint_x[i] = temp2 + spacing3; 
+        temp2 = waypoint_x[i];
+      } 
+      else if (index == 3) {
+        waypoint_x[i] = temp + spacing2;
+        temp = waypoint_x[i]; 
+      }
+      else {
+        waypoint_x[i] = temp + spacing2;
+        temp = waypoint_x[i]; 
+        index = 0; // Set to 0 because it is about to be auto increased by 1
+      } 
+      index++;
+    }
+    
+    // If top border is hard
+    if (border2) {
+      // Set the Y coordinates for the waypoints
+      temp = 1;
+      index = 0;
+      for (int i = 0; i < numberWaypoints; i++) {
+        if (i < numberWaypoints-2) {
+          waypoint_y[i] = y_start + index*spacing; 
+          temp++;
+          if (temp == 3) {
+            temp = 1;
+            index++;
+          }
+        }
+        else{  // Y coordinates of last two waypoints 
+          waypoint_y[i] = trapHeight - 28 + zone[zoneNum].Ay;
+          if (waypoint_x[i-2] < waypoint_x[i-1]){
+            if (i == numberWaypoints-2)
+              waypoint_x[i] = waypoint_x[i-1] + spacing3*((waypoint_y[i]-waypoint_y[i-1])/spacing);
+            else
+              waypoint_x[i] = waypoint_x[i-3] + spacing2*((waypoint_y[i]-waypoint_y[i-3])/spacing);
+          }
+          else{
+            if (i == numberWaypoints-2)
+              waypoint_x[i] = waypoint_x[i-1] + spacing2*((waypoint_y[i]-waypoint_y[i-1])/spacing);
+            else
+              waypoint_x[i] = waypoint_x[i-3] + spacing3*((waypoint_y[i]-waypoint_y[i-3])/spacing);
+          }
+        }
+      }
+    }
+    else { // Else the top border is soft
+      // Set the Y coordinates for the waypoints
+      temp = 1;
+      index = 0;
+      for (int i = 0; i < numberWaypoints; i++) {
+        if (i < numberWaypoints) {
+          waypoint_y[i] = y_start + index*spacing; 
+          temp++;
+          if (temp == 3) {
+            temp = 1;
+            index++;
+          }
+        }
+      }  
+    }
+  }
+  
+  // Vertical decomposition
+  else {
+    // Define equations for the bottom and top borders
+      // Let y = m1*x + b1 be the equation of the bottom border
+      m1 = (zone[zoneNum].By - zone[zoneNum].Ay)*1.0/(zone[zoneNum].Bx - zone[zoneNum].Ax);
+      b1 = m1*(0 - zone[zoneNum].Ax) + zone[zoneNum].Ay;
+      // Let y = m2*x + b2 be the equation of the top border
+      m2 = (zone[zoneNum].Cy - zone[zoneNum].Dy)*1.0/(zone[zoneNum].Cx - zone[zoneNum].Dx);
+      b2 = m2*(0 - zone[zoneNum].Dx) + zone[zoneNum].Dy;
+    
+    // Set the Y coordinates for the waypoints
+    waypoint_y[0] = (x_start*m1 + b1) + 28;
+    waypoint_y[1] = (x_start*m2 + b2) - 28;
+    // Temp = current y coordinate along bottom border
+    // Temp2 = current y coordinate along top border
+    temp = waypoint_y[0];
+    temp2 = waypoint_y[1];
+    // Spacing = horizontal spacing between parallel paths
+    // Spacing2 = vertical spacing between adjacent waypoints on the bottom border
+    // Spacing3 = vertical spacing between adjacent waypoints on the top border
+    spacing2 = ((x_start + spacing)*m1 + b1) - (x_start*m1 + b1);
+    spacing3 = ((x_start + spacing)*m2 + b2) - (x_start*m2 + b2);
+    // The second (index = 1) and third (index = 2) waypoint_y will be 11 inches (28 cm) to the left of the trapezoids y boundary
+    // The fourth (index = 3) and fifth (index = 4) waypoint_y will be 11 inches (28 cm) to the right of the trapezoids y boundary
+    // Reset index (index = 0) and repeat until the last waypoint is reached
+    index = 2; // Start index at 2 to skip the 2nd waypoint (waypoint_y[1] already established)
+    for (int i = 2; i < numberWaypoints; i++) {
+      if (index == 1) {
+        waypoint_y[i] = temp2 + spacing3;
+        temp2 = waypoint_y[i];
+      } 
+      else if (index == 2) {
+        waypoint_y[i] = temp2 + spacing3; 
+        temp2 = waypoint_y[i];
+      } 
+      else if (index == 3) {
+        waypoint_y[i] = temp + spacing2;
+        temp = waypoint_y[i]; 
+      }
+      else {
+        waypoint_y[i] = temp + spacing2;
+        temp = waypoint_y[i]; 
+        index = 0; // Set to 0 because it is about to be auto increased by 1
+      } 
+      index++;
+    }
+    
+    // Check if right border is hard
+    if (border2) {
+      // Set the X coordinates for the waypoints
+      temp = 1;
+      index = 0;
+      for (int i = 0; i < numberWaypoints; i++) {
+        if (i < numberWaypoints-2) {
+          waypoint_x[i] = x_start + index*spacing; 
+          temp++;
+          if (temp == 3) {
+            temp = 1;
+            index++;
+          }
+        }
+        else  // X coordinates of last two waypoints 
+          waypoint_x[i] = trapWidth - 28 + zone[zoneNum].Ax;
+      }
+    }
+    else { // Else the right border is soft
+      // Set the X coordinates for the waypoints
+      temp = 1;
+      index = 0;
+      for (int i = 0; i < numberWaypoints; i++) {
+        if (i < numberWaypoints) {
+          waypoint_x[i] = x_start + index*spacing; 
+          temp++;
+          if (temp == 3) {
+            temp = 1;
+            index++;
+          }
+        }
+      }  
+    }
+  }
+  
+  
+  String commonVert1 = "";
+  String commonVert2 = "";
+  int tempX = -1;
+  int tempY = -1; 
+  int nextX = -1;
+  int nextY = -1;
+  int prevX = -1;
+  int prevY = -1;
+    
+  // Make sure we are not in the last zone
+  if(zoneNum != zoneIndex - 1){
+    // Find common vertex #2 (common vertex between current zone and next zone)
+    for(int i = 0; i < 4; i++){
+      switch(i) {
+        case 0: // Vertex A
+          tempX = zone[zoneNum].Ax;
+          tempY = zone[zoneNum].Ay;
+          break;
+        case 1: // Vertex B
+          tempX = zone[zoneNum].Bx;
+          tempY = zone[zoneNum].By;
+          break;
+        case 2: // Vertex C
+          tempX = zone[zoneNum].Cx;
+          tempY = zone[zoneNum].Cy;
+          break;
+        case 3: // Vertex D
+          tempX = zone[zoneNum].Dx;
+          tempY = zone[zoneNum].Dy;
+          break;
+        default:
+          break;
+      }
+      for (int j = 0; j < 4; j++){
+        switch(j) {
+          case 0: // Vertex A
+            nextX = zone[zoneNum+1].Ax;
+            nextY = zone[zoneNum+1].Ay;
+            break;
+          case 1: // Vertex B
+            nextX = zone[zoneNum+1].Bx;
+            nextY = zone[zoneNum+1].By;
+            break;
+          case 2: // Vertex C
+            nextX = zone[zoneNum+1].Cx;
+            nextY = zone[zoneNum+1].Cy;
+            break;
+          case 3: // Vertex D
+            nextX = zone[zoneNum+1].Dx;
+            nextY = zone[zoneNum+1].Dy;
+            break;
+          default:
+            break;
+        }
+        if(tempX == nextX && tempY == nextY){
+          switch(i) {
+            case 0: // Vertex A
+              commonVert2 = "A";
+              break;
+            case 1: // Vertex B
+              commonVert2 = "B";
+              break;
+            case 2: // Vertex C
+              commonVert2 = "C";
+              break;
+            case 3: // Vertex D
+              commonVert2 = "D";
+              break;
+            default:
+              break;
+          }
+        }  
+      }   
+    }
+  }
+  
+  // Make sure we are not in the first zone
+  if(zoneNum != 0){
+    // Find common vertex #1 (common vertex between current zone and previous zone)
+    for(int i = 0; i < 4; i++){
+      switch(i) {
+        case 0: // Vertex A
+          tempX = zone[zoneNum].Ax;
+          tempY = zone[zoneNum].Ay;
+          break;
+        case 1: // Vertex B
+          tempX = zone[zoneNum].Bx;
+          tempY = zone[zoneNum].By;
+          break;
+        case 2: // Vertex C
+          tempX = zone[zoneNum].Cx;
+          tempY = zone[zoneNum].Cy;
+          break;
+        case 3: // Vertex D
+          tempX = zone[zoneNum].Dx;
+          tempY = zone[zoneNum].Dy;
+          break;
+        default:
+          break;
+      }
+      for (int j = 0; j < 4; j++){
+        switch(j) {
+          case 0: // Vertex A
+            prevX = zone[zoneNum-1].Ax;
+            prevY = zone[zoneNum-1].Ay;
+            break;
+          case 1: // Vertex B
+            prevX = zone[zoneNum-1].Bx;
+            prevY = zone[zoneNum-1].By;
+            break;
+          case 2: // Vertex C
+            prevX = zone[zoneNum-1].Cx;
+            prevY = zone[zoneNum-1].Cy;
+            break;
+          case 3: // Vertex D
+            prevX = zone[zoneNum-1].Dx;
+            prevY = zone[zoneNum-1].Dy;
+            break;
+          default:
+            break;
+        }
+        if(tempX == prevX && tempY == prevY){
+          switch(i) {
+            case 0: // Vertex A
+              commonVert1 = "A";
+              break;
+            case 1: // Vertex B
+              commonVert1 = "B";
+              break;
+            case 2: // Vertex C
+              commonVert1 = "C";
+              break;
+            case 3: // Vertex D
+              commonVert1 = "D";
+              break;
+            default:
+              break;
+          }
+          if (decompType==2){
+            i = 4;
+          }
+        }  
+      }
+    }
+  }
+  
+  float waypointAx, waypointAy;
+  float waypointBx, waypointBy;
+  float waypointCx, waypointCy;
+  float waypointDx, waypointDy;
+  String lastPoint;
+  
+  // Check for horizontal decomposition
+  if(decompType == 2) {
+    if(waypoint_x[numberWaypoints - 1] > waypoint_x[numberWaypoints - 2]){
+      waypointCx = waypoint_x[numberWaypoints - 1];
+      waypointCy = waypoint_y[numberWaypoints - 1];
+      waypointDx = waypoint_x[numberWaypoints - 2];
+      waypointDy = waypoint_y[numberWaypoints - 2];
+      lastPoint = "C";
+    }
+    else {
+      waypointCx = waypoint_x[numberWaypoints - 2];
+      waypointCy = waypoint_y[numberWaypoints - 2];
+      waypointDx = waypoint_x[numberWaypoints - 1];
+      waypointDy = waypoint_y[numberWaypoints - 1];   
+      lastPoint = "D";
+    }  
+    waypointAx = waypoint_x[0];
+    waypointAy = waypoint_y[0];
+    waypointBx = waypoint_x[1];
+    waypointBy = waypoint_y[1];
+    
+  // Sort the waypoints in the zone
+    // If zone #1 sort differently (last waypoint goes next to common vertex)
+    if(zoneNum == 0){
+      if(commonVert2 == "A"){
+        // Reverse order
+        ReverseOrder(numberWaypoints);
+      }
+      else if(commonVert2 == "B"){
+        // Reverse and Flip order
+        ReverseOrder(numberWaypoints);
+        FlipOrder(numberWaypoints);
+      }
+      else if(commonVert2 == "C"){
+        if(lastPoint == "C"){
+          // Do nothing
+        }
+        else {
+          // Flip order
+          FlipOrder(numberWaypoints);  
+        }
+      }
+      else{ // commonVert2 == "D"
+        if(lastPoint == "D"){
+          // Do nothing
+        }
+        else {
+          // Flip order
+          FlipOrder(numberWaypoints);  
+        }
+      }      
+    }
+    // Else the zone not zone #1
+    // Make the first waypoint closest to common vertex #1 first, then add an aditional last waypoint next to common vertex #2
+    else{
+      if(commonVert1 == "A"){
+        // Do nothing
+      }
+      else if(commonVert1 == "B"){
+        // Flip order
+        FlipOrder(numberWaypoints);
+      }
+      else if(commonVert1 == "C"){
+        if(lastPoint == "C"){
+          // Reverse order
+          ReverseOrder(numberWaypoints);
+        }
+        else{
+          // Reverse and Flip order
+          ReverseOrder(numberWaypoints);
+          FlipOrder(numberWaypoints);
+        }
+      }
+      else{ // commonVert1 == "D"
+        if(lastPoint == "D"){
+          // Reverse order
+          ReverseOrder(numberWaypoints);
+        }
+        else{
+          // Reverse and Flip order
+          ReverseOrder(numberWaypoints);
+          FlipOrder(numberWaypoints);
+        }
+      }
+      
+      // If not last zone then add additional waypoint (to connect to next zone)
+      if(zoneNum != zoneIndex-1){
+        if(commonVert2 == "A"){
+          waypoint_x[numberWaypoints] = waypointAx;
+          waypoint_y[numberWaypoints] = waypointAy;
+        }
+        else if(commonVert2 == "B"){
+          waypoint_x[numberWaypoints] = waypointBx;
+          waypoint_y[numberWaypoints] = waypointBy;
+        }
+        else if(commonVert2 == "C"){
+          waypoint_x[numberWaypoints] = waypointCx;
+          waypoint_y[numberWaypoints] = waypointCy;
+        }
+        else{ // commonVert2 == "D"
+          waypoint_x[numberWaypoints] = waypointDx;
+          waypoint_y[numberWaypoints] = waypointDy;
+        }
+        numberWaypoints++;    
+      }
+    }
+  }
+  
+  // Else vertical decomposition
+  else{
+    if(waypoint_y[numberWaypoints - 1] > waypoint_y[numberWaypoints - 2]){
+      waypointCx = waypoint_x[numberWaypoints - 1];
+      waypointCy = waypoint_y[numberWaypoints - 1];
+      waypointBx = waypoint_x[numberWaypoints - 2];
+      waypointBy = waypoint_y[numberWaypoints - 2];
+      lastPoint = "C";
+    }
+    else {
+      waypointCx = waypoint_x[numberWaypoints - 2];
+      waypointCy = waypoint_y[numberWaypoints - 2];
+      waypointBx = waypoint_x[numberWaypoints - 1];
+      waypointBy = waypoint_y[numberWaypoints - 1];   
+      lastPoint = "B";
+    }  
+    waypointAx = waypoint_x[0];
+    waypointAy = waypoint_y[0];
+    waypointDx = waypoint_x[1];
+    waypointDy = waypoint_y[1];
+  
+  // Sort the waypoints in the zone
+    // If zone #1 sort differently (last waypoint goes next to common vertex)
+    if(zoneNum == 0){
+      if(commonVert2 == "A"){
+        // Reverse order
+        ReverseOrder(numberWaypoints);
+      }
+      else if(commonVert2 == "B"){
+        if(lastPoint == "B"){
+          // Do nothing
+        }
+        else{
+          // Flip order
+          FlipOrder(numberWaypoints);
+        }
+      }
+      else if(commonVert2 == "C"){
+        if(lastPoint == "C"){
+          // Do nothing
+        }
+        else{
+          // Flip order
+          FlipOrder(numberWaypoints);
+        }
+      }
+      else{ // commonVert2 == "D"
+        // Reverse and Flip order
+        ReverseOrder(numberWaypoints);
+        FlipOrder(numberWaypoints);
+      }      
+    }
+    // Else the zone not zone #1
+    // Make the first waypoint closest to common vertex #1 first, then add an aditional last waypoint next to common vertex #2
+    else{
+      if(commonVert1 == "A"){
+        // Do nothing
+      }
+      else if(commonVert1 == "B"){
+        if(lastPoint == "B"){
+          // Reverse order
+          ReverseOrder(numberWaypoints);
+        }
+        else{
+          // Reverse and Flip order
+          ReverseOrder(numberWaypoints);
+          FlipOrder(numberWaypoints);
+        }
+      }
+      else if(commonVert1 == "C"){
+        if(lastPoint == "C"){
+          // Reverse order
+          ReverseOrder(numberWaypoints);
+        }
+        else{
+          // Reverse and Flip order
+          ReverseOrder(numberWaypoints);
+          FlipOrder(numberWaypoints);
+        }
+      }
+      else{ // commonVert1 == "D"
+        // Flip order
+        FlipOrder(numberWaypoints);
+      }
+      
+      // If not last zone then add additional waypoint (to connect to next zone)
+      if(zoneNum != zoneIndex-1){
+        if(commonVert2 == "A"){
+          waypoint_x[numberWaypoints] = waypointAx;
+          waypoint_y[numberWaypoints] = waypointAy;
+        }
+        else if(commonVert2 == "B"){
+          waypoint_x[numberWaypoints] = waypointBx;
+          waypoint_y[numberWaypoints] = waypointBy;
+        }
+        else if(commonVert2 == "C"){
+          waypoint_x[numberWaypoints] = waypointCx;
+          waypoint_y[numberWaypoints] = waypointCy;
+        }
+        else{ // commonVert2 == "D"
+          waypoint_x[numberWaypoints] = waypointDx;
+          waypoint_y[numberWaypoints] = waypointDy;
+        }
+        numberWaypoints++;    
+      }      
+    }   
+  }
+  
+  for(int i = 0; i < numberWaypoints; i++){ //for(int i = waypointIndex; i < numberWaypoints + waypointIndex; i++){
+    // Add the waypoints to the waypoint array
+    waypoint[waypointIndex] = new ZoneWaypoint( zoneNum + 1, waypoint_x[i], waypoint_y[i]);
+    waypointIndex++;  
+  }
+  
+  myTextarea.setText(myTextarea.getText() + "Zone: " + (zoneNum+1) +"\n");
+  myTextarea.setText(myTextarea.getText() + "  Waypoints: " + numberWaypoints +"\n");
+  // Print the waypoints to the text area
+  for (int i = 0; i < numberWaypoints; i++) {
+    myTextarea.setText(myTextarea.getText() + "  [" + i + "] " + waypoint_x[i] + " , " + waypoint_y[i] + "\n");
+  }
+}
+
+void FlipOrder(int numPoints){
+  for(int i = 0; i < numPoints - 1; i=i+2){
+    temp = waypoint_x[i];
+    waypoint_x[i] = waypoint_x[i+1];
+    waypoint_x[i+1] = temp;
+    temp = waypoint_y[i];
+    waypoint_y[i] = waypoint_y[i+1];
+    waypoint_y[i+1] = temp;
+  }
+}
+
+void ReverseOrder(int numPoints){
+  for(int i = 0; i < numPoints/2; i++){
+    temp = waypoint_x[i];
+    waypoint_x[i] = waypoint_x[numPoints - i - 1];
+    waypoint_x[numPoints - i - 1] = temp;
+    temp = waypoint_y[i];
+    waypoint_y[i] = waypoint_y[numPoints - i - 1];
+    waypoint_y[numPoints - i - 1] = temp;
+  }
+}
+
+public static boolean isRed(color testColor) {
+  boolean result;
+  int r=(testColor>>16)&0xFF;
+  int g=(testColor>>8 )&0xFF;
+  int b=testColor&0xFF; 
+  
+  if(r>g+10 && r>b+10){
+    result = true;
+  }
+  else{
+    result = false;
+  }
+  return result;
+}
+
+public static boolean isGreen(color testColor) {
+  boolean result;
+  int r=(testColor>>16)&0xFF;
+  int g=(testColor>>8 )&0xFF;
+  int b=testColor&0xFF; 
+  
+  if(g>r+10 && g>b+10){
+    result = true;
+  }
+  else{
+    result = false;
+  }
+  return result;
+}
+
+public static boolean isBlue(color testColor) {
+  boolean result;
+  int r=(testColor>>16)&0xFF;
+  int g=(testColor>>8 )&0xFF;
+  int b=testColor&0xFF; 
+  
+  if(b>g+10 && b>r+10){
+    result = true;
+  }
+  else{
+    result = false;
+  }
+  return result;
+}
+
+public static boolean isWhite(color testColor) {
+  boolean result;
+  int r=(testColor>>16)&0xFF;
+  int g=(testColor>>8 )&0xFF;
+  int b=testColor&0xFF; 
+  
+  if(r>200 && g>200 && b>200){
+    result = true;
+  }
+  else{
+    result = false;
+  }
+  return result;
+}
+
+public static boolean isBlack(color testColor) {
+  boolean result;
+  int r=(testColor>>16)&0xFF;
+  int g=(testColor>>8 )&0xFF;
+  int b=testColor&0xFF; 
+  
+  if(r<50 && g<50 && b<50){
+    result = true;
+  }
+  else{
+    result = false;
+  }
+  return result;
+}
