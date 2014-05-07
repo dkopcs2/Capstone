@@ -1,0 +1,448 @@
+
+#include <sbp.h>
+#define MSG_INIT_BASE               0x23  /**< Piksi  -> Host  */
+
+#include <autoNav.h>
+#include <math.h>
+#include <Servo.h> 
+#include <PID_v1.h> // Reference the PID Library
+
+#include <sbp_messages.h>
+
+static const uint32_t GPSBaud = 115200;
+static const double accuracyWindow = 0.5; //Meters
+
+/////Compass Stuff
+#define PT 0x00
+#define headingReg 0x63
+unsigned int checksum;
+byte checksum0,checksum1;
+unsigned int data[4] = {
+  0};
+unsigned long tempPulse = 1498;
+byte fix = B00000001;
+const int maxWaypoints = 200;
+autoNav mower(maxWaypoints);
+
+
+
+double Input, Output, Setpoint=0, kp=0.1,ki=0.1,kd=0.00;
+PID myPID(&Input, &Output, &Setpoint,kp,ki,kd, DIRECT);  //Store PID object as variable
+int error = 0;  // Record any errors that may occur in the compass.
+int val;  // variable to read the value from the analog pin 
+Servo Steering, Throttle;  // create servo object to control a servo 
+float headingDegrees = 0;
+float throttle = 90;
+float bearing = 0;
+unsigned long lastRecordedWaypoint = 0;
+unsigned long lastDisplayInfo = 0;
+unsigned long lastPWM = 0;
+//unsigned long tempTime;
+
+// Convenience macro for sending an SBP message.
+#define SBP_MSG(sbp_state, msg_type, item) \
+sbp_send_message(&sbp_state, msg_type, MY_SENDER_ID, \
+       0, NULL, &my_write)
+
+
+
+//SBP stuff
+sbp_state_t sbp_state;
+
+sbp_pos_llh_t      pos_llh;
+sbp_baseline_ned_t baseline_ned;
+sbp_vel_ned_t      vel_ned;
+sbp_dops_t         dops;
+sbp_gps_time_t     gps_time;
+
+void setup()
+{
+  sbp_setup();
+
+  Serial1.begin(57600);  //Compass
+  checksum='s'+'n'+'p'+PT+headingReg;
+  checksum1=checksum>>8;
+  checksum0=checksum & 0xFF;
+  Serial.begin(115200);  // USB Baud
+  Serial2.begin(GPSBaud); //GPS Baud
+  delay(100);  
+  Serial.println(F("Automatic Lawn Mower Navigation"));
+  Serial.println();
+
+  myPID.SetMode(AUTOMATIC);
+  myPID.SetSampleTime(200); 
+  pinMode(10, OUTPUT);
+  pinMode(11, OUTPUT);
+  Steering.attach(10);  // attaches the servo on pin 9 to the servo object 
+  Throttle.attach(11);
+  mower.isAuto = false;
+  mower.addWaypoint(Waypoint(0, -10.00));
+  mower.addWaypoint(Waypoint(0, -20.00));
+}
+
+void loop()
+{  
+  CheckMode();
+
+
+  Throttle.write(90);
+
+
+  // This sketch displays information every time a new sentence is correctly encoded.
+
+  while(Serial2.available() > 0) {
+    sbp_process(&sbp_state, &my_read);
+  } 
+  mower.position.lat = baseline_ned.e/1000.0;
+  mower.position.lng = baseline_ned.n/1000.0;
+
+  if ((millis()-lastDisplayInfo) > 500){
+    lastDisplayInfo = millis();
+    displayInfo();  
+  }
+
+
+
+  if(mower.isAuto){
+    mower.waypoint = mower.Route[mower.waypointIndex];
+    AutoSteer();
+  }
+  else
+  {
+    //if(micros() - lastPWM)
+    //tempPulse = pulseIn(12, HIGH);
+    Steering.writeMicroseconds(tempPulse);
+    //Serial.println(tempPulse);
+  }
+
+  if (mower.isRecording){
+    //tempTime = millis();
+    if (((millis()-lastRecordedWaypoint) > 2000) && (baseline_ned.flags & fix)==1){
+      lastRecordedWaypoint = millis();
+      mower.addWaypoint(Waypoint(mower.position.lat, mower.position.lng));
+    }
+  }
+
+
+
+}
+
+void displayInfo()
+{  
+  Serial.print(F("Output: ")); 
+  Serial.print(val);
+  Serial.print(F(","));
+  Serial.print(F("Heading: ")); 
+  Serial.print(headingDegrees);
+  Serial.print(F(","));
+  Serial.print(F("Bearing: ")); 
+  Serial.print(mower.Bearing());
+  Serial.print(F(","));
+  Serial.print(F(" Distance: ")); 
+  Serial.print(mower.DistToWay());
+  Serial.print(F(","));
+  Serial.print(F(" Loc: ")); 
+  Serial.print((mower.position.lat), 4);
+  Serial.print(F(", "));
+  Serial.print((mower.position.lng), 4);
+  Serial.print(F(" Waypt: ")); 
+  Serial.print((mower.waypoint.lat), 4);
+  Serial.print(F(", "));
+  Serial.print((mower.waypoint.lng), 4);
+  Serial.print(F(" #: ")); 
+  Serial.print((mower.waypointIndex+1));
+  Serial.print(F(" of ")); 
+  Serial.print((mower.waypointCount)); 
+  Serial.print(F(" FIX: ")); 
+
+  Serial.println((baseline_ned.flags & fix), BIN);
+}
+
+
+double GetHeading(){
+
+  int temp = 0;
+  //Serial.println("Polling...");
+  Serial1.write('s');
+  Serial1.write('n');
+  Serial1.write('p');
+  Serial1.write(PT);
+  Serial1.write(headingReg);
+  Serial1.write(checksum1);
+  Serial1.write(checksum0);
+  //Serial.println("Reading...");
+  Serial.flush();
+  while(Serial1.available()<11);
+  
+  for(int i=0;i<11;i++){
+ 
+    temp = Serial1.read();
+
+    switch (i) {
+    case 5:
+      data[0] = temp;
+      break;
+    case 6:
+      data[1] = temp;
+      break;
+    case 7:
+      data[2] = temp;
+      break;
+    case 8:
+      data[3] = temp;
+      break;
+    default: 
+      break;
+    }
+
+
+  }
+  temp = (data[1] | (data[0] << 8));
+  //Serial.print("Value: ");
+  //Serial.println(temp*0.0109863);//Euler scale factor reg63
+   
+  return(temp*0.0109863);
+}
+
+float getFloatFromSerialMonitor(){
+  char inData[20];  
+  float f=0;    
+  int x=0;  
+  while (x<1){  
+    String str;   
+    if (Serial.available()) {
+      //delay(100);
+      int i=0;
+      while (Serial.available() > 0 && Serial.peek()!= ',') {
+        char  inByte = Serial.read();
+        str=str+inByte;
+        inData[i]=inByte;
+        i+=1;
+        x=2;
+      }
+      f = atof(inData);
+      memset(inData, 0, sizeof(inData));  
+    }
+  }//END WHILE X<1  
+  return f; 
+}
+
+void CheckforWaypoints(){
+  float a,b;
+
+
+  return;
+}
+
+float UpdateSpeed(){
+  float b;
+  Serial.flush();
+  while(Serial.available()> 0){
+
+    Serial.println("Received Byte...");
+    if (Serial.peek() == 's'){
+      int blank = Serial.read();
+      b = getFloatFromSerialMonitor();
+
+      Serial.print(F("Speed updated to "));
+      Serial.println(b, 2);
+      displayInfo();
+      return b;
+    }
+    else
+      return throttle;
+  }
+  return throttle;
+}
+
+float UpdateBearing(){
+  float b;
+  Serial.flush();
+  while(Serial.available()> 0){
+
+    Serial.println("Received Byte...");
+    if (Serial.peek() == 'b'){
+      int blank = Serial.read();
+      b = getFloatFromSerialMonitor();
+
+      Serial.print(F("Bearing updated to "));
+      Serial.println(b, 2);
+      displayInfo();
+      return b;
+    }
+    else
+      return bearing;
+  }
+  return bearing;
+}
+
+void CheckMode(){
+  float a,b;
+  Serial.flush();
+  while(Serial.available()> 0){
+
+    Serial.println("Received Byte...");
+    switch (Serial.peek()) {
+    case 'r':
+      mower.isAuto = false;
+      mower.isRecording = true;
+      break;
+    case 'i':
+      sbp_send_message(&sbp_state, MSG_INIT_BASE, NULL,0x00,NULL, &my_write);
+      break;
+    case 'a':
+      mower.isAuto = true;
+      mower.isRecording = false;
+      break;
+    default: 
+      while(Serial.available()> 0){
+        a = getFloatFromSerialMonitor();
+        int blank = Serial.read();
+        b = getFloatFromSerialMonitor();
+        mower.addWaypoint(Waypoint(a, b));
+        Serial.print(a, 8);
+        Serial.print(F(", "));
+        Serial.println(b, 8);
+        Serial.print((mower.Route[mower.waypointCount-1].lat), 8);
+        Serial.print(F(", "));
+        Serial.println((mower.Route[mower.waypointCount-1].lng), 8);
+      }
+      mower.waypoint = mower.Route[mower.waypointIndex];
+      break;    
+    }
+
+    int blank = Serial.read();
+
+  }
+  return;
+}
+
+void AutoSteer(){
+
+ 
+  if (mower.DistToWay() < accuracyWindow)
+  {
+    Throttle.write(90);
+    //delay(2000);
+    mower.NextWaypoint();
+  }
+
+  Setpoint = 0; //Setpoint value from GPS Signal  
+  
+  if((millis()-lastPWM) > 200){
+    lastPWM = millis();
+    headingDegrees = GetHeading();    
+  }
+ 
+  headingDegrees += 0;
+  
+  while(headingDegrees < 0) headingDegrees += 360; // Correct for when signs are reversed.
+  
+  
+  
+
+  double bearingRadians = mower.Bearing()*PI/180;
+  //double bearingRadians = bearing*PI/180;
+
+  float heading = headingDegrees*(PI/180);
+
+  if (bearingRadians-heading > 0){
+
+    Input = heading-bearingRadians;   
+  }
+  else{
+    Input = heading-bearingRadians;        
+  }
+  if (Input > PI) Input -= 2*PI;
+  if (Input < -PI) Input += 2*PI;
+  if (Input > PI/2) Input = PI/2;
+  if (Input < -PI/2) Input = -PI/2;
+
+  Input = Input*180/PI;
+
+  myPID.Compute();  // ***Performs the PID Calculations. Output variable is updated.***
+ 
+  val = map(Output, -5,5, 1460, 1540);
+  constrain(val, 1460, 1540);
+  Steering.writeMicroseconds(val);  // sets the servo position according to the scaled value 
+
+  return;
+}
+
+
+//SBP Functions
+
+void sbp_pos_llh_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+{
+  pos_llh = *(sbp_pos_llh_t *)msg;
+}
+void sbp_baseline_ned_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+{
+  baseline_ned = *(sbp_baseline_ned_t *)msg;
+}
+void sbp_vel_ned_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+{
+  vel_ned = *(sbp_vel_ned_t *)msg;
+}
+void sbp_dops_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+{
+  dops = *(sbp_dops_t *)msg;
+}
+void sbp_gps_time_callback(u16 sender_id, u8 len, u8 msg[], void *context)
+{
+  gps_time = *(sbp_gps_time_t *)msg;
+}
+
+
+
+
+void sbp_setup(void)
+{
+  /* SBP parser state must be initialized before sbp_process is called. */
+  sbp_state_init(&sbp_state);
+
+  /*
+   * SBP callback nodes must be statically allocated. Each message ID / callback
+   * pair must have a unique sbp_msg_callbacks_node_t associated with it.
+   */
+  static sbp_msg_callbacks_node_t gps_time_node;
+  static sbp_msg_callbacks_node_t pos_llh_node;
+  static sbp_msg_callbacks_node_t baseline_ned_node;
+  static sbp_msg_callbacks_node_t vel_ned_node;
+  static sbp_msg_callbacks_node_t dops_node;
+
+  /* Register a node and callback, and associate them with a specific message ID. */
+  sbp_register_callback(&sbp_state, SBP_GPS_TIME, &sbp_gps_time_callback,
+  NULL, &gps_time_node);
+  sbp_register_callback(&sbp_state, SBP_POS_LLH, &sbp_pos_llh_callback,
+  NULL, &pos_llh_node);
+  sbp_register_callback(&sbp_state, SBP_BASELINE_NED, &sbp_baseline_ned_callback,
+  NULL, &baseline_ned_node);
+  sbp_register_callback(&sbp_state, SBP_VEL_NED, &sbp_vel_ned_callback,
+  NULL, &vel_ned_node);
+  sbp_register_callback(&sbp_state, SBP_DOPS, &sbp_dops_callback,
+  NULL, &dops_node);
+}
+
+u32 my_read(u8 *buff, u32 n, void *context)
+{
+  int i = 0;
+  for (i=0; i<n; i++) {
+    if (Serial2.available() > 0)
+      buff[i] = Serial2.read();
+    else
+      break;
+  }
+  return i;
+}
+
+u32 my_write(u8 *buff, u32 n, void *context)
+{
+  int i = 0;
+  for (i=0; i<n; i++) {
+    Serial2.flush();
+    Serial2.write(buff[i]);
+
+  }
+  return i;
+}
