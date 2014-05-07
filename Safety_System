@@ -1,0 +1,247 @@
+//Code for 4 proximity sensors and bump sensor
+//Author: Daniel Kopcso
+//Date: 04/26/14
+//LSU Autonomous Lawnmower Capstone Project
+//         A          L
+//        A A         L
+//       A   A        L
+//      A     A       L
+//     AAAAAAAAA      L
+//    A         A     L
+//   A           A    L
+//  A             A   LLLLLLLLLLL
+
+
+// Global variables**********************************************************************************
+//Digital pins for reading in the pulse width from the MaxSonar devices.                          //*
+//These variablea are constant because the pins will not change throughout execution of this code.//*
+const int rightSide_pwPin  = 2;                                                                   //*
+const int frontRight_pwPin = 3;                                                                   //*
+const int frontLeft_pwPin  = 4;                                                                   //*
+const int leftSide_pwPin   = 5;                                                                   //*
+const int bumpSensorPin    = 22;                                                                  //*
+//Variables needed to store prox readings                                                         //*
+long tempPulse, inches, cm;                                                                       //*
+int length;                                                                                       //*
+                                                                                                  //*
+//Mower will sound siren if object greater than 4 feet and less than 9 feet                       //*
+int warningDist = 108; // 108 inches = 9 feet                                                     //*
+int stopDist = 48;     // 48 inches = 4 feet                                                      //*
+//***************************************************************************************************
+
+
+//Setup function**********************************************************************
+void setup() {                                                                     //*
+  //This opens up a serial connection to shoot the results back to the PC console  //*
+  Serial.begin(57600);                                                             //*
+                                                                                   //*
+  //Set pin modes for proximity inputs                                             //*
+  pinMode(rightSide_pwPin, INPUT);                                                 //*
+  pinMode(frontRight_pwPin, INPUT);                                                //*
+  pinMode(frontLeft_pwPin, INPUT);                                                 //*
+  pinMode(leftSide_pwPin, INPUT);                                                  //*
+  pinMode(bumpSensorPin, INPUT);                                                   //*
+}                                                                                  //*
+//************************************************************************************
+
+
+//Loop function**************
+void loop() {             //*
+  readSensors();          //*
+  checkBumpSensor();      //*
+}                         //*
+//***************************
+
+
+//Function to read sensors and print to screen*******************************
+void readSensors(){                                                       //*
+  for(int i = 1; i < 5; i++){                                             //*
+                                                                          //*
+    switch (i){                                                           //*
+      case 1:                                                             //*
+        //Right side sensor                                               //*
+        tempPulse = pulseIn(rightSide_pwPin, HIGH);                       //*                
+        break;                                                            //*
+                                                                          //*
+      case 2:                                                             //*
+        //Front right sensor                                              //*
+        tempPulse = pulseIn(frontRight_pwPin, HIGH);                      //*
+        break;                                                            //*
+                                                                          //*
+      case 3:                                                             //*
+        //Front left sensor                                               //*
+        tempPulse = pulseIn(frontLeft_pwPin, HIGH);                       //*
+        break;                                                            //*
+                                                                          //*
+      case 4:                                                             //*
+        //Left side sensor                                                //*
+        tempPulse = pulseIn(leftSide_pwPin, HIGH);                        //*
+        break;                                                            //*
+                                                                          //*
+      default:                                                            //*
+        break;                                                            //*
+    }                                                                     //*
+                                                                          //*
+    //Pulse Width representation with a scale factor of 147 uS per Inch.  //*        
+    inches = tempPulse/147;                                               //*
+                                                                          //*
+    //Check for obstacle                                                  //*
+    if(inches<=warningDist)                                               //*
+      soundSiren(i);                                                      //*
+    else if(inches<stopDist)                                              //*
+      emergencyStop(i);                                                   //*
+                                                                          //*
+    //Change inches to centimetres                                        //*
+    cm = inches * 2.54;                                                   //*
+                                                                          //*
+    //Print the sensor name according to variable i                       //*
+    switch (i){                                                           //*
+      case 1:                                                             //*
+        Serial.print("Right Side:  ");                                    //*     
+        break;                                                            //*
+      case 2:                                                             //*
+        Serial.print("Front Right: ");                                    //*
+        break;                                                            //*
+      case 3:                                                             //*
+        Serial.print("Front Left:  ");                                    //*
+        break;                                                            //*
+      case 4:                                                             //*
+        Serial.print("Left Side:   ");                                    //*
+        break;                                                            //*
+      default:                                                            //*
+        break;                                                            //*
+    }                                                                     //*
+                                                                          //*
+    printProx(inches, cm);                                                //*
+  }                                                                       //*
+  //Delay will most likely need to be                                     //*
+  //taken out to account for reading bumpSensor!!!!!!!!                   //*
+  delay(400);                                                             //*
+}                                                                         //*
+//***************************************************************************
+
+
+//Function to check state of bump sensor************************************
+//Sensors are placed in series and are normally closed                   //*
+void checkBumpSensor(){                                                  //*
+  int bumpState = 0;                                                     //*
+  bumpState = digitalRead(bumpSensorPin);                                //*
+                                                                         //*
+  //If state is LOW then a bumper has been activated (EMERGENCY STOP)    //*
+  if(bumpState == LOW){                                                  //*
+    Serial.print("Emergency Stop! Bump Sensor Activated!");              //*
+    //Send commands to stop throttle and steering                        //*
+    //Throttle.write(90);                                                //*
+    //Steering.write(90);                                                //*
+    //SHUT DOWN BLADE                                                    //*
+  }                                                                      //*
+}                                                                        //*
+//**************************************************************************
+
+
+//Sound Siren function**************************
+void soundSiren(int index){                  //*
+  //Throttle.write(90);                      //*
+  //Steering.write(90);                      //*
+  //SOUND SIREN                              //*
+  switch (index){                            //*
+    case 1:                                  //*
+      Serial.print("Warning Right Side!");   //*                                       
+      break;                                 //*
+    case 2:                                  //*
+      Serial.print("Warning Front Right!");  //* 
+      break;                                 //*
+    case 3:                                  //*                     
+      Serial.print("Warning Front Left!");   //*    
+      break;                                 //*
+    case 4:                                  //*                       
+      Serial.print("Warning Left Side!");    //*    
+      break;                                 //*
+    default:                                 //*                       
+      break;                                 //*            
+  }                                          //*
+  //Make callback to readSensors             //*
+  //This will cause it to loop until         //*
+  //the obstacle moves                       //*
+  readSensors();                             //*
+}                                            //*
+//**********************************************
+
+
+//Emergency Stop function********************************
+void emergencyStop(int index){                        //*
+  //Throttle.write(90);                               //*
+  //Steering.write(90);                               //*
+  //SHUT DOWN BLADE (send signal to pwm switch)       //*
+  //SOUND SIREN (CONTINUOUS)                          //*
+  switch (index){                                     //*
+    case 1:                                           //*
+      Serial.print("Emergency Stop Right Side!");     //*                                  
+      break;                                          //*
+    case 2:                                           //*
+      Serial.print("Emergency Stop Front Right!");    //*
+      break;                                          //*
+    case 3:                                           //*            
+      Serial.print("Emergency Stop Front Left!");     //*  
+      break;                                          //*
+    case 4:                                           //*              
+      Serial.print("Emergency Stop Left Side!");      //*  
+      break;                                          //*
+    default:                                          //*              
+      break;                                          //*   
+  }                                                   //*
+  //Make callback to readSensors                      //*
+  //This will cause it to loop until                  //*
+  //the obstacle moves                                //*
+  readSensors();                                      //*
+}                                                     //*
+//*******************************************************
+
+
+
+
+//Functions used to help with nice formatting in the console (debugging only)***         
+                                                                             //* 
+//Returns the length of the read strings****                                 //*
+int lenHelper(long x){                   //*                                 //*                  
+  if(x>=100) return 3;                   //*                                 //*
+  else if(x>=10) return 2;               //*                                 //*
+  else return 1;                         //*                                 //*
+}                                        //*                                 //*
+//******************************************                                 //*
+                                                                             //*
+//Prints spaces for nice formatting*********                                 //*
+void printSpace(int pulseLength) {       //*                                 //*
+  switch (pulseLength){                  //*                                 //*
+    case 2:                              //*                                 //*
+      Serial.print("     ");             //*                                 //*
+      break;                             //*                                 //*
+    case 3:                              //*                                 //*
+      Serial.print("    ");              //*                                 //*
+      break;                             //*                                 //*
+    case 4:                              //*                                 //*
+      Serial.print("   ");               //*                                 //*
+      break;                             //*                                 //*
+    case 5:                              //*                                 //*
+      Serial.print("  ");                //*                                 //*
+      break;                             //*                                 //*
+    case 6:                              //*                                 //*
+      Serial.print(" ");                 //*                                 //*
+      break;                             //*                                 //*
+    default:                             //*                                 //*
+      Serial.print("\t");                //*                                 //*
+  }                                      //*                                 //*
+}                                        //*                                 //*
+//******************************************                                 //*
+                                                                             //*
+//Prints the sensor readings******************************                   //*
+void printProx(long proxInches, long proxCm) {         //*                   //*
+  Serial.print(proxInches);                            //*                   //*
+  Serial.print("in, ");                                //*                   //*
+  Serial.print(proxCm);                                //*                   //*
+  Serial.print("cm");                                  //*                   //*
+                                                       //*                   //*
+  length = lenHelper(proxInches) + lenHelper(proxCm);  //*                   //*
+  printSpace(length);                                  //*                   //*
+}                                                      //*                   //*
+//******************************************************************************
